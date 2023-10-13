@@ -38,26 +38,19 @@ defmodule FrequencyTables do
   end
 
   def to_histogram(map) do
-    output_arr = []
-    total = Enum.reduce(
-      map,
-      0,
-      fn {_, count}, sum -> sum + count end
-    )
+    total = Enum.reduce(map, 0, fn {_, count}, sum -> sum + count end)
 
-    for {k, v} <- map, into: output_arr do
+    counts = for {k, v} <- map do
       perc = ceiling_division(v, total)
       {k, perc}
     end
+
+    Enum.sort(counts, fn {_, perc1}, {_, perc2} -> perc1 <= perc2 end)
   end
 
-
-  def sorted_histogram(map) do
-    percs = to_histogram(map)
-    output = Enum.sort(
-      percs,
-      fn {_, perc1}, {_, perc2} -> perc1 <= perc2 end
-    ) 
-    output
+  def word_histogram(text) do
+    word_list = word_count(text)
+    to_histogram(word_list)
+    
   end
 end
