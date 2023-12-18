@@ -42,6 +42,8 @@ defmodule Paxos do
 
       #listener for initial propose call
       {:client_propose, inst, value, sender} ->
+        #add a property to the state map containing the sender process (to send decision to)
+        state = %{state | client: sender}
         #check for passed in instance -> create if not there, select if already there
         instance_state = fetch_instance(state.instances, inst)
         #once selected the correct instance -> propose the value
@@ -51,12 +53,12 @@ defmodule Paxos do
         instance_state.current_bal = instance_state.current_bal + 1
 
         #hit start_propose listener
-        send(self(), {:start_propose, state, instance_state, inst})
+        send(self(), {:start_propose, instance_state, inst})
         %{state | instances: Map.put(state.instances, inst, instance_state )}
 
 
       #called into for sending initial request for preparation to all processes.
-      {:start_propose, state, instance_state, inst} ->
+      {:start_propose, instance_state, inst} ->
         beb_broadcast({:prepare, self(), inst, instance_state.current_bal}, state.processes)
         state
 
@@ -80,7 +82,16 @@ defmodule Paxos do
 
     end
 
-      {:prepared}
+
+      {:nack, ballot} ->
+        IO.puts("Received nack from process, aborting")
+        send(state.client, :abort)
+
+
+      #process the response
+      #then check for a quorum
+      {:prepared, ballot, a_bal, a_val} ->
+      
 
     run(state)
   end
