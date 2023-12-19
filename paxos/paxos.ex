@@ -70,30 +70,28 @@ defmodule Paxos do
       #received by processes -> must respond with (prepared) or nack
       {:prepare, sender, inst, ballot} -> 
         IO.puts("Received preparation request from process #{inspect sender} on ballot #{inspect ballot} at #{inspect self()}")
-        instance_state = fetch_instance(state, inst)
+        instance_state = fetch_instance(state.instances, inst)
         updated_instance_state = 
-          if ballot > instance_state.current_bal do 
-            IO.puts(instance_state.current_bal)
-            IO.puts(ballot)
+          if ballot >= instance_state.current_bal do 
             new_instance_state = %{instance_state | current_bal: ballot} 
-            IO.puts("sending ACK")
+            IO.puts("sending ACK from process #{inspect self()}")
             #send ack
             send(sender, {:prepared, inst, ballot, instance_state.a_bal, instance_state.a_val, self()})
             new_instance_state
           else
             #otherwise send nack (i.e. if the proposed ballot is lower than this procs current one)
+            IO.puts("#{inspect self()} sending NACK, ballot = #{inspect ballot}, current ballot = #{inspect instance_state.current_bal}")
             send(sender, {:nack, inst, ballot})
             instance_state
           end
                 #update local state and return it
-        IO.puts("returning state for Process #{inspect self()}")
         state = %{state | instances: Map.put(state.instances, inst, updated_instance_state )}
         state
 
       #upon receiving a nack, abort the given instance -> update the instance state and send :abort to client
       {:nack, instance, ballot} ->
         IO.puts("Received nack from process in Paxos instance #{inspect instance}, aborting")
-        instance_state = fetch_instance(state, instance)
+        instance_state = fetch_instance(state.instances, instance)
         instance_state = %{instance_state| aborted: true}
         send(state.client, {:abort, instance, ballot})
         state = %{state | instances: Map.put(state.instances, instance, instance_state )}
@@ -108,57 +106,59 @@ defmodule Paxos do
       {:prepared, instance, ballot, a_bal, a_val, sender} ->
         IO.puts("Received 'Prepared' message at Process #{inspect self()} from #{inspect sender}")
         #grab the relavant instance
-        #IO.inspect(state)
-        instance_state = fetch_instance(state, instance)
+        instance_state = fetch_instance(state.instances, instance)
         #check if instance is aborted for this ballot
         #if the instance is aborted, then we can't accept acks anymore, so return
-        if instance_state.aborted do
-          state
-
-        else
+        has_quorum = check_for_quorum?(state.processes, instance_state.prepared + 1)
+        updated_instance_state = 
           #check if we have a quorum
-          has_quorum = check_for_quorum?(state.processes, instance_state.prepared)
-          updated_instance_state = 
-            if has_quorum do
-              if check_values(instance) do 
-                instance_state = %{instance_state| value: instance_state.proposal }
-                instance_state
-              else  
-                #fetch highest ballot value
-                highest_bal = highest_ballot(instance_state.prepared_vals)
-                instance_state = %{instance_state| value: highest_bal }
-                instance_state
-              end
-              #broadcast the decided 'val' to all processes
-              beb_broadcast({:accept, instance, ballot, instance_state.value, self()}, state.processes)
+          if has_quorum and not instance_state.aborted do
+            IO.puts("Found quorum")
+            if check_values?(instance_state.prepared_vals) do 
+              instance_state = %{instance_state| value: instance_state.proposal }
+              instance_state
+            else  
+              #fetch highest ballot value
+              highest_bal = highest_ballot(instance_state.prepared_vals)
+              instance_state = %{instance_state| value: highest_bal }
+              instance_state
             end
-
-            updated_instance_state = %{instance_state| prepared: updated_instance_state.prepared + 1 }
-            updated_instance_state = %{instance_state| prepared_val: Map.put(updated_instance_state.prepared_vals, a_bal, a_val)}
-            state = %{state | instances: Map.put(state.instances, instance, updated_instance_state )}
-            state
-        end
+            #broadcast the decided 'val' to all processes
+            IO.puts("Broadcasting accept requests")
+            beb_broadcast({:accept, instance, ballot, instance_state.value, self()}, state.processes)
+            instance_state
+          else
+            instance_state
+          end
+        IO.puts("at end of for loop, , #{inspect sender}")
+        updated_instance_state = %{updated_instance_state| prepared: updated_instance_state.prepared + 1 }
+        IO.puts("updated prepared value, #{inspect sender}")
+        updated_instance_state = %{updated_instance_state| prepared_vals: Map.put(updated_instance_state.prepared_vals, a_bal, a_val)}
+        IO.puts("updated prepared vals and bals, #{inspect sender}")
+        state = %{state | instances: Map.put(state.instances, instance, updated_instance_state )}
+        IO.puts("returning state in :prepared, #{inspect sender}")
+        state
 
       {:accept, instance, ballot, value, sender} ->
         IO.puts("Received accept request from process #{inspect sender} on ballot #{inspect ballot} at #{inspect self()} ")
-        instance_state = fetch_instance(state, instance)
+        instance_state = fetch_instance(state.instances, instance)
         updated_instance_state = 
-          if ballot > instance_state.current_bal do 
+          if ballot >= instance_state.current_bal do 
             new_instance_state = %{instance_state| current_bal: ballot, a_bal: ballot, a_val: value}
-            send(sender, {:accepted, instance, ballot})
+            #send(sender, {:accepted, instance, ballot})
             new_instance_state
           else 
-            send(sender, {:nack, instance, ballot})
+            #send(sender, {:nack, instance, ballot})
             instance_state
-
           end
         #return updated state
         state = %{state | instances: Map.put(state.instances, instance, updated_instance_state )}
         state
       
 
-      {:accepted, instance, _ballot} -> 
-        instance_state = fetch_instance(state, instance)
+      {:accepted, instance, ballot} -> 
+        IO.puts("made it to accepted")
+        instance_state = fetch_instance(state.instances, instance)
         #check if instance is aborted for this ballot
         #if the instance is aborted, then we can't accept acks anymore, so return
         if instance_state.aborted do
@@ -190,7 +190,7 @@ defmodule Paxos do
         %{
         current_bal: -1,
         a_bal: -1,
-        a_val: -1,
+        a_val: nil,
         value: nil,
         prepared_vals: %{},
         proposal: nil,
@@ -209,7 +209,7 @@ defmodule Paxos do
     count >= requirement
   end
 
-  defp check_values(list) do 
+  defp check_values?(list) do 
     Enum.all?(list, fn {_, value} -> is_nil(value) end)
   end
 
@@ -222,6 +222,7 @@ defmodule Paxos do
       end
     end)
   end
+
 
   defp unicast(message, process) do
     case :global.whereis_name(process) do 
