@@ -34,7 +34,7 @@ defmodule Paxos do
   def get_decision(pid, inst, t) do 
     send(pid, {:fetch_decision, inst, self()})
     receive do 
-      {:decided_value, v} ->
+      {:decided_value, ^inst, v} ->
         v
     after 
       t ->
@@ -52,8 +52,8 @@ defmodule Paxos do
         IO.puts("Processes have decided on value #{inspect v}")
         {:decision, v}
       
-      {:abort, instance, ballot} ->
-        IO.puts("Aborted instance ID #{inspect instance} on ballot #{inspect ballot}")
+      {:abort, ^inst, ballot} ->
+        IO.puts("Aborted instance ID #{inspect inst} on ballot #{inspect ballot}")
         {:abort}
 
     after 
@@ -86,14 +86,14 @@ defmodule Paxos do
           #IO.inspect(state)
           state
         else 
-          {:decided, instance_state.decided}
+          send(state.client, {:decided, inst, instance_state.decided})
           state
         end
         
 
       {:fetch_decision, instance, sender } ->
         instance_state = fetch_instance(state.instances, instance)
-        send(sender, {:decided_value, instance_state.decided_val})
+        send(sender, {:decided_value, instance, instance_state.decided_val})
         state
         
 
