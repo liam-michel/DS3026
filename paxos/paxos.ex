@@ -1,10 +1,10 @@
 defmodule Paxos do
   #start function to initialise paxos process(es)
-  def start(name, participants) do 
+  def start(name, participants) do
     pid = spawn(Paxos, :init, [name, participants])
 
     case :global.re_register_name(name, pid) do
-      :yes -> pid  
+      :yes -> pid
       :no  -> :error
     end
 
@@ -12,7 +12,7 @@ defmodule Paxos do
     pid
   end
 
-  #initialise state with name (the given process), list of processes, map for the different instances, 
+  #initialise state with name (the given process), list of processes, map for the different instances,
   #ballot_constant and rank used for generating unique ballot ids for all proposing processes
   def init(name, processes) do
     state = %{
@@ -31,12 +31,12 @@ defmodule Paxos do
   end
 
   #used to fetch a decision of a given instance from a given process (pid)
-  def get_decision(pid, inst, t) do 
+  def get_decision(pid, inst, t) do
     send(pid, {:fetch_decision, inst, self()})
-    receive do 
+    receive do
       {:decided_value, ^inst, v} ->
         v
-    after 
+    after
       t ->
         nil
     end
@@ -51,12 +51,12 @@ defmodule Paxos do
       {:decided , ^inst, v} ->
         IO.puts("Processes have decided on value #{inspect v}")
         {:decision, v}
-      
+
       {:abort, ^inst, ballot} ->
         IO.puts("Aborted instance ID #{inspect inst} on ballot #{inspect ballot}")
         {:abort}
 
-    after 
+    after
       t ->
         {:timeout}
     end
@@ -64,8 +64,8 @@ defmodule Paxos do
 
 
   #actual consensus
-  def run(state) do 
-    state = receive do 
+  def run(state) do
+    state = receive do
 
       #listener for initial propose call
       {:client_propose, inst, value, sender} ->
@@ -76,51 +76,50 @@ defmodule Paxos do
         #once selected the correct instance -> propose the value
         #start prepare -> increment ballot first and reset abort to false
         if not instance_state.decided and not instance_state.proposed do
-          IO.puts("Process #{inspect self()} is proposing a value #{inspect value}" )
-          instance_state = %{instance_state| aborted: false, accepted: false, proposal: value}
+          IO.puts("Process #{inspect self()} is proposing a value #{inspect value} on instance #{inspect inst}" )
+          instance_state = %{instance_state| aborted: false, accepted: false, proposal: value, decided: false, proposed: true, client: sender}
           new_ballot_id = state.rank + state.ballot_constant
-          IO.puts("broadcasting ballot with id #{inspect new_ballot_id}")
           beb_broadcast({:prepare, self(), inst, new_ballot_id}, state.processes)
           #return updated state
           state = %{state | instances: Map.put(state.instances, inst, instance_state), rank: new_ballot_id}
           #IO.inspect(state)
           state
-        else 
-          send(state.client, {:decided, inst, instance_state.decided})
+        else
+          send(sender, {:decided, inst, instance_state.decided_val})
           state
         end
-        
+
 
       {:fetch_decision, instance, sender } ->
         instance_state = fetch_instance(state.instances, instance)
         send(sender, {:decided_value, instance, instance_state.decided_val})
         state
-        
 
-      {:receive_decision, inst, decision} ->  
+
+      {:receive_decision, inst, decision} ->
         IO.puts("Process #{inspect self()} received decided value #{inspect decision}")
         instance_state = fetch_instance(state.instances, inst)
         updated_instance_state = %{instance_state| decided_val: decision, decided: true}
         state = %{state | instances: Map.put(state.instances, inst, updated_instance_state )}
         state
-      
+
       #upon receiving a nack, abort the given instance -> update the instance state and send :abort to client
       {:nack, instance, ballot} ->
         IO.puts("Received nack from process in Paxos instance #{inspect instance}, aborting")
         instance_state = fetch_instance(state.instances, instance)
         instance_state = %{instance_state| aborted: true}
-        send(state.client, {:abort, instance, ballot})
+        send(instance_state.client, {:abort, instance, ballot})
         state = %{state | instances: Map.put(state.instances, instance, instance_state )}
         state
 
 
       #received by processes -> must respond with (prepared) or nack
-      {:prepare, sender, inst, ballot} -> 
+      {:prepare, sender, inst, ballot} ->
         IO.puts("Received preparation request from process #{inspect sender} on ballot #{inspect ballot} at #{inspect self()}")
         instance_state = fetch_instance(state.instances, inst)
-        updated_instance_state = 
-          if ballot > instance_state.current_bal do 
-            new_instance_state = %{instance_state | current_bal: ballot} 
+        updated_instance_state =
+          if ballot > instance_state.current_bal do
+            new_instance_state = %{instance_state | current_bal: ballot}
             IO.puts("sending ACK from process #{inspect self()}")
             #send ack
             send(sender, {:prepared, inst, ballot, instance_state.a_bal, instance_state.a_val, self()})
@@ -142,80 +141,81 @@ defmodule Paxos do
         #grab the relavant instance
         IO.puts("Delivered 'Prepared' message at Process #{inspect self()} from #{inspect sender}")
         instance_state = fetch_instance(state.instances, instance)
+        instance_state =
+          if not instance_state.aborted and not instance_state.prepared do
+            %{instance_state| prepared_count: instance_state.prepared_count + 1,  prepared_vals: Map.put(instance_state.prepared_vals, a_bal, a_val) }
+          else
+            instance_state
+          end
         #check if instance is aborted for this ballot
         #if the instance is aborted, then we can't accept acks anymore, so return
-        has_quorum = check_for_quorum?(state.processes, instance_state.prepared_count + 1)
+        IO.puts(instance_state.prepared_count)
+        has_quorum = check_for_quorum?(state.processes, instance_state.prepared_count)
 
-        updated_instance_state = 
+        updated_instance_state =
           #check if we have a quorum
-          if has_quorum and not instance_state.aborted and not (instance_state.proposed) and ballot == instance_state.current_bal do
+          if has_quorum and not instance_state.aborted and not (instance_state.prepared) and ballot == instance_state.current_bal do
             IO.puts("Found quorum in preparation phase")
-            instance_state = 
-              if check_values?(instance_state.prepared_vals) do 
+            instance_state =
+              if check_values?(instance_state.prepared_vals) do
                 IO.puts("all gathered values are nil")
                 %{instance_state| value: instance_state.proposal }
-              else  
+              else
                 IO.puts("Non nil value detected")
                 #fetch highest ballot value
-                highest_bal = highest_ballot(instance_state.prepared_vals)
-                %{instance_state| value: highest_bal }
-                
+                {_, val} = highest_ballot(instance_state.prepared_vals)
+                %{instance_state| value: val }
+
               end
             #broadcast the decided 'val' to all processes
             IO.puts("Broadcasting accept requests")
             IO.puts("Broadcasting value #{inspect instance_state.value}")
             beb_broadcast({:accept, instance, ballot, instance_state.value, self()}, state.processes)
-            #update instance state to show that this instance has already broadcastes its proposal 
-            instance_state = %{instance_state| proposed: true, prepared_vals: %{} }
+            #update instance state to show that this instance has already broadcastes its proposal
+            instance_state = %{instance_state| prepared: true, prepared_vals: %{} }
             instance_state
           else
             instance_state
           end
 
-        updated_instance_state = 
-          if not updated_instance_state.aborted and not updated_instance_state.proposed do 
-            %{updated_instance_state| prepared_count: updated_instance_state.prepared_count + 1,  prepared_vals: Map.put(updated_instance_state.prepared_vals, a_bal, a_val) }
-          else
-            updated_instance_state
-          end
         state = %{state | instances: Map.put(state.instances, instance, updated_instance_state )}
         state
 
       {:accept, instance, ballot, value, sender} ->
         IO.puts("Received accept request from process #{inspect sender} on ballot #{inspect ballot} at #{inspect self()} ")
         instance_state = fetch_instance(state.instances, instance)
-        updated_instance_state = 
-          if ballot >= instance_state.current_bal do 
+        updated_instance_state =
+          if ballot >= instance_state.current_bal do
             IO.puts("accepting value #{inspect value} at processs #{inspect self()}")
             new_instance_state = %{instance_state| current_bal: ballot, a_bal: ballot, a_val: value}
             send(sender, {:accepted, instance, ballot})
             new_instance_state
-          else 
+          else
             send(sender, {:nack, instance, ballot})
             instance_state
           end
         #return updated state
         state = %{state | instances: Map.put(state.instances, instance, updated_instance_state )}
         state
-      
+
 
 
       {:accepted, instance, ballot} ->
         instance_state = fetch_instance(state.instances, instance)
         has_quorum = check_for_quorum?(state.processes, instance_state.accepted_count + 1)
-        updated_instance_state = 
-          if has_quorum and not instance_state.aborted and not instance_state.decided and instance_state.current_bal == ballot do 
+        updated_instance_state =
+          if has_quorum and not instance_state.aborted and not instance_state.decided and instance_state.current_bal == ballot do
             IO.puts("found quorum in acceptance, accepting value #{inspect instance_state.value}")
             IO.puts("sending response to upper layer")
             #broadcast the decision to all processes
             beb_broadcast({:receive_decision, instance, instance_state.value}, state.processes)
-            send(state.client, {:decided, instance, instance_state.value})
+            send(instance_state.client, {:decided, instance, instance_state.value})
             instance_state = %{instance_state | decided: true}
             instance_state
           else
             instance_state
           end
-        updated_instance_state = 
+        updated_instance_state =
           if not updated_instance_state.decided and not updated_instance_state.aborted and not updated_instance_state.accepted do
             %{updated_instance_state| accepted_count: updated_instance_state.accepted_count + 1}
           else
@@ -223,16 +223,16 @@ defmodule Paxos do
           end
         state = %{state | instances: Map.put(state.instances, instance, updated_instance_state )}
         state
-        
+
 
     end
 
     run(state)
   end
 
-  defp fetch_instance(state, instance_id) do 
+  defp fetch_instance(state, instance_id) do
     case Map.get(state, instance_id) do
-      nil -> 
+      nil ->
         %{
         current_bal: -1,
         a_bal: -1,
@@ -247,19 +247,19 @@ defmodule Paxos do
         aborted: false,
         decided_val: nil,
         prepared_count: 0,
-        accepted_count: 0
+        accepted_count: 0,
+        client: nil
         }
-      entry -> 
+      entry ->
         entry
     end
   end
 
-  defp check_for_quorum?(list, count) do 
-    requirement = div(length(list), 2) + rem(length(list), 2)
-    count >= requirement
+  defp check_for_quorum?(list, count) do
+    count >= length(list) /2
   end
 
-  defp check_values?(list) do 
+  defp check_values?(list) do
     Enum.all?(list, fn {_, value} -> is_nil(value) end)
   end
 
@@ -275,7 +275,7 @@ defmodule Paxos do
 
 
   defp unicast(message, process) do
-    case :global.whereis_name(process) do 
+    case :global.whereis_name(process) do
       pid when is_pid(pid) -> send(pid, message)
       :undefined -> :ok
     end
@@ -285,8 +285,7 @@ defmodule Paxos do
     for p <- processes, do: unicast(message, p)
   end
 
-  
+
 
 
 end
-
