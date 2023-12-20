@@ -12,7 +12,8 @@ defmodule Paxos do
     pid
   end
 
-
+  #initialise state with name (the given process), list of processes, map for the different instances, 
+  #ballot_constant and rank used for generating unique ballot ids for all proposing processes
   def init(name, processes) do
     state = %{
       name: name,
@@ -24,12 +25,12 @@ defmodule Paxos do
     run(state)
   end
 
-
+  #function that takes a target and a list of processes, returns the index of the target element in the list
   def calculate_rank(target, processes) do
     Enum.find_index(processes, fn process -> process == target end)
   end
 
-
+  #used to fetch a decision of a given instance from a given process (pid)
   def get_decision(pid, inst, t) do 
     send(pid, {:fetch_decision, inst, self()})
     receive do 
@@ -46,6 +47,7 @@ defmodule Paxos do
     send(pid, {:client_propose, inst, value, self()})
 
     receive do
+      #indicates that a given instance has decided a value
       {:decided , ^inst, v} ->
         IO.puts("Processes have decided on value #{inspect v}")
         {:decision, v}
