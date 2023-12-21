@@ -1,0 +1,111 @@
+warning: variable "process" is unused (if the variable is not meant to be used, prefix it with an underscore)
+  beb.ex:59: Beb.print_delivered_messages/2
+
+warning: missing parentheses for expression following "do:" keyword. Parentheses are required to solve ambiguity inside keywords.
+
+This error happens when you have function calls without parentheses inside keywords. For example:
+
+    function(arg, one: nested_call a, b, c)
+    function(arg, one: if expr, do: :this, else: :that)
+
+In the examples above, we don't know if the arguments "b" and "c" apply to the function "function" or "nested_call". Or if the keywords "do" and "else" apply to the function "function" or "if". You can solve this by explicitly adding parentheses:
+
+    function(arg, one: if(expr, do: :this, else: :that))
+    function(arg, one: nested_call(a, b, c))
+
+Ambiguity found at:
+  test_harness.ex:70
+
+warning: missing parentheses for expression following "do:" keyword. Parentheses are required to solve ambiguity inside keywords.
+
+This error happens when you have function calls without parentheses inside keywords. For example:
+
+    function(arg, one: nested_call a, b, c)
+    function(arg, one: if expr, do: :this, else: :that)
+
+In the examples above, we don't know if the arguments "b" and "c" apply to the function "function" or "nested_call". Or if the keywords "do" and "else" apply to the function "function" or "if". You can solve this by explicitly adding parentheses:
+
+    function(arg, one: if(expr, do: :this, else: :that))
+    function(arg, one: nested_call(a, b, c))
+
+Ambiguity found at:
+  test_harness.ex:71
+
+warning: use Bitwise is deprecated. import Bitwise instead
+  uuid.ex:2: UUID (module)
+
+============
+"No failures, no concurrent ballots, 3 local procs", 10 times
+============
+registered p3
+registered p2
+registered p1
+:p3: started
+:p2: started
+:p1: started
+Process #PID<0.153.0> is proposing a value {:val, 202} on instance 1
+Received preparation request from process #PID<0.153.0> on ballot 3 at #PID<0.153.0>
+Received preparation request from process #PID<0.153.0> on ballot 3 at #PID<0.154.0>
+Received preparation request from process #PID<0.153.0> on ballot 3 at #PID<0.155.0>
+sending ACK from process #PID<0.153.0>
+sending ACK from process #PID<0.154.0>
+sending ACK from process #PID<0.155.0>
+Delivered 'Prepared' message at Process #PID<0.153.0> from #PID<0.153.0>
+1
+Delivered 'Prepared' message at Process #PID<0.153.0> from #PID<0.154.0>
+2
+Found quorum in preparation phase
+all gathered values are nil
+Broadcasting accept requests
+Broadcasting value {:val, 202}
+Delivered 'Prepared' message at Process #PID<0.153.0> from #PID<0.155.0>
+Received accept request from process #PID<0.153.0> on ballot 3 at #PID<0.154.0> 
+Received accept request from process #PID<0.153.0> on ballot 3 at #PID<0.155.0> 
+2
+accepting value {:val, 202} at processs #PID<0.154.0>
+accepting value {:val, 202} at processs #PID<0.155.0>
+Received accept request from process #PID<0.153.0> on ballot 3 at #PID<0.153.0> 
+accepting value {:val, 202} at processs #PID<0.153.0>
+found quorum in acceptance, accepting value {:val, 202}
+sending response to upper layer
+Processes have decided on value {:val, 202}
+p2: No decision after 10 seconds
+p1: No decision after 10 seconds
+p3: No decision after 10 seconds
+p3: {:message_queue_len, 0}
+p2: {:message_queue_len, 0}
+p1: {:message_queue_len, 0}
+FAIL
+	[{:p1, #PID<0.155.0>, :none, :none, 10, {:message_queue_len, 0}}, {:p2, #PID<0.154.0>, :none, :none, 10, {:message_queue_len, 0}}, {:p3, #PID<0.153.0>, :none, :none, 10, {:message_queue_len, 0}}]
+registered p1
+registered p3
+registered p2
+:p1: started
+:p3: started
+:p2: started
+Process #PID<0.160.0> is proposing a value {:val, 204} on instance 1
+Received preparation request from process #PID<0.160.0> on ballot 3 at #PID<0.160.0>
+Received preparation request from process #PID<0.160.0> on ballot 3 at #PID<0.161.0>
+Received preparation request from process #PID<0.160.0> on ballot 3 at #PID<0.162.0>
+sending ACK from process #PID<0.160.0>
+sending ACK from process #PID<0.161.0>
+sending ACK from process #PID<0.162.0>
+Delivered 'Prepared' message at Process #PID<0.160.0> from #PID<0.160.0>
+1
+Delivered 'Prepared' message at Process #PID<0.160.0> from #PID<0.161.0>
+2
+Found quorum in preparation phase
+all gathered values are nil
+Broadcasting accept requests
+Broadcasting value {:val, 204}
+Delivered 'Prepared' message at Process #PID<0.160.0> from #PID<0.162.0>
+Received accept request from process #PID<0.160.0> on ballot 3 at #PID<0.161.0> 
+Received accept request from process #PID<0.160.0> on ballot 3 at #PID<0.162.0> 
+2
+accepting value {:val, 204} at processs #PID<0.161.0>
+accepting value {:val, 204} at processs #PID<0.162.0>
+Received accept request from process #PID<0.160.0> on ballot 3 at #PID<0.160.0> 
+accepting value {:val, 204} at processs #PID<0.160.0>
+found quorum in acceptance, accepting value {:val, 204}
+sending response to upper layer
+Processes have decided on value {:val, 204}
