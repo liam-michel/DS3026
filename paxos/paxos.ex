@@ -103,6 +103,9 @@ defmodule Paxos do
         instance_state = fetch_instance(state.instances, inst)
         updated_instance_state = %{instance_state| decided_val: decision, decided: true}
         state = %{state | instances: Map.put(state.instances, inst, updated_instance_state )}
+        if updated_instance_state.client do
+          send(updated_instance_state.client, {:decided, inst, updated_instance_state.value})
+        end
         state
 
       #upon receiving a nack, abort the given instance -> update the instance state and send :abort to client
@@ -226,7 +229,6 @@ defmodule Paxos do
             #broadcast the decision to all processes
             IO.inspect(instance_state.value)
             beb_broadcast({:receive_decision, instance, instance_state.value}, state.processes)
-            send(instance_state.client, {:decided, instance, instance_state.value})
             instance_state = %{instance_state| accepted: true, accepted_count: 0}
             instance_state
           else
